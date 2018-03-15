@@ -24,3 +24,6 @@
           command: |
             ./tmp/cc-test-reporter sum-coverage tmp/codeclimate.*.json -p 2 -o tmp/codeclimate.total.json
             ./tmp/cc-test-reporter upload-coverage --debug -i tmp/codeclimate.total.json
+            
+            
+            
