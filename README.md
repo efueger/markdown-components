@@ -1,19 +1,17 @@
 
-
-[![CircleCI](https://circleci.com/gh/aneilbaboo/markdown-components.svg?style=shield&circle-token=fbb8592a984a41740eebf952734f4776b86b0504)](https://circleci.com/gh/aneilbaboo/markdown-components)
-
 # markdown-components
 
 Add custom React-like components to Markdown which can be safely used by end-users. Use with your favorite Markdown engine.
 
-E.g., 
+E.g.,
 ```html
-<Box color={user.favoriteColor} lineWidth=3>
+<# A Box which defaults to blue if user has no favorite color #>
+<Box color={user.favoriteColor or "blue"} lineWidth=3>
   ## subheading
   * listElement1
   * listElement2
   [google](https://google.com)
-  <Box color=blue>Box in box!</Box>
+  <Box color="red">Box in box!</Box>
   _more_ markdown
 </Box>
 ```
@@ -49,7 +47,7 @@ var customizedMarkdown = `
 Custom components:
 <Box lineSize=2 color={ user.favoriteColor }>
   Can contain...
-  # Markdown with interpolation:
+  # Markdown with interpolated expressions:
   This box should be *{ user.favoriteColor }*
   And the _markdown_ can contain custom components:
   <Box lineSize=1 color="red">
@@ -117,9 +115,9 @@ Markdown components provides a content authoring language with custom components
 | nesting   |  yes        | no                     | yes                 |
 | HOCs      |  yes        | no                     | yes                 |
 
-JSX-markdown libraries aren't suitable because React interpolation expressions are Javascript. I.e., you'd need to eval user-generated javascript either on your server or another user's browser. You could try evaluating such code in a sandboxed environment, but it's inefficient and asynchronous. The need for asynchronous evaluation rules out using a sandbox like [jailed](https://github.com/asvd/jailed) in a React client, since React rendering requires synchronous execution.
+JSX-markdown libraries aren't suitable because React interpolated expressions are Javascript. I.e., you'd need to eval user-generated javascript either on your server or another user's browser. You could try evaluating such code in a sandboxed environment, but it's inefficient and asynchronous. The need for asynchronous evaluation rules out using a sandbox like [jailed](https://github.com/asvd/jailed) in a React client, since React rendering requires synchronous execution.
 
-In this package, interpolation expressions, like `{ a.b }`, are not evaluated, so there is no script injection vulnerability, and inteprolation is a simple synchronous function. End-users only have access to variables you provide in a context object.
+In this package, expressions, like `{ a.b }` or `{ foo(a) }` are restricted to a context object and a set of developer defined functions, so there is no script injection vulnerability. Authors of this markdown work inside a developer-defined sandbox.
 
 ## API
 
@@ -127,18 +125,18 @@ In this package, interpolation expressions, like `{ a.b }`, are not evaluated, s
 
 Easy one step method for generating HTML.
 
-Parses and renders Markdown with components to HTML, interpolating context variables.
+Parses and renders Markdown with components to HTML.
 
 ```javascript
 // requires: npm install markdown-it
 import { markdownItEngine, toHTML } from 'markdown-components';
 toHTML({
-  input: '<MyComponent a={ x.y } b=123 c="hello"># This is an {x.y} heading</MyComponent>', 
+  input: '<MyComponent a={ x.y } b=123 c="hello"># This is an {x.y} heading</MyComponent>',
   components: {
-    MyComponent({a, b, c, __children}, render) { 
+    MyComponent({a, b, c, __children}, render) {
       render(`<div class=my-component><p>a=${a};b=${b};c=${c}</p>`);
       render(__children); // renders elements between open and close tag
-      render(`</div>`); 
+      render(`</div>`);
     }
   },
   markdownEngine: markdownItEngine(),
@@ -165,15 +163,15 @@ Note that this function doesn't parse Markdown. Markdown parsing is currently do
    Allows a contiguous block of Markdown to start at an indentation point without creating a [preformatted code block](https://daringfireball.net/projects/markdown/syntax#precode).
    This is useful when writing Markdown inside deeply nested components.
 
-#### #parse 
+#### #parse
 
 Returns a JSON object representing the parsed markdown.
 
 ```javascript
 import { Parser, showdownEngine } from 'markdown-components';
 var parser = new Parser({markdownEngine:}); // use showdownjs
-var parsedElements = parser.parse(`<MyComponent a={ x.y.z } b=123 c="hello">
-# User likes { user.color } color
+var parsedElements = parser.parse(`<MyComponent a={ x.y.z } b=123 c="hello" d e=false >
+# User likes { user.color or "no" } color
 </MyComponent>
 `);
 // =>
@@ -183,16 +181,23 @@ var parsedElements = parser.parse(`<MyComponent a={ x.y.z } b=123 c="hello">
 //     name: 'mycomponent',
 //     rawName: 'MyComponent',
 //     attribs: {
-//       a: { accessor: "x.y.z" },
+//       a: {
+//            type: "interpolation",
+//            expression: ["accessor", "x.y.z"]
+//       },
 //       b: 123,
-//       c: "hello"
+//       c: "hello",
+//       d: true,
+//       e: false
 //     }
 //     children: [
 //       {
 //         type: "text",
 //         blocks: [
 //           "<h1>User likes ",
-//           { type: "interpolation", accessor: "user.color" }
+//           { type: "interpolation",
+//             expression: ["or", ["accessor", "user.color"], ["scalar", "no"]]
+//           },
 //           "color</h1>"
 //         ]
 //       }
@@ -201,6 +206,16 @@ var parsedElements = parser.parse(`<MyComponent a={ x.y.z } b=123 c="hello">
 // ]
 ```
 
+#### Attribute types
+
+Attributes can be ints, floats, strings, booleans and expressions.
+
+```html
+<MyComponent a=1 b=1.2 c="hello" d e=true f=false />
+```
+
+Note: the `d` attribute represents a `true` boolean.
+
 ### Renderer
 
 A class representing the rendering logic.
@@ -208,17 +223,22 @@ A class representing the rendering logic.
 #### constructor arguments
 
 * `components` (required)
-  An object of key:function pairs. Where the key is the componentName (matched case-insensitively with tags in the input text), and function is a function which takes parsed elements as input, and uses the render function to write HTML.
-  `({__name, __children, ...attrs}, render)=>{}`
+  An object of key:function pairs. Where the key is the componentName (matched case-insensitively with tags in the input text), and function is a function which takes parsed elements as input, and uses the render function to write HTML:
+
+  ```js
+  ({__name, __children, ...attrs}, render)=>{}
+  ```
 * `defaultComponent` (optional)
   A function called when a matching component cannot be found for a tag. Same function signature as a component.
-* `interpolator` (optional)
-  Takes the context provided to `#write` or `toHTML` and the string inside a `{ }` block, and returns a new value. The default interpolator provides a simple dot-accessor syntax for objects.
-  `standardInterpolator({a: {b: 123}}, "a.b") // => 123`
+* `functions` (optional)
+  Functions which may be used in interpolation expressions, of the form:
+  ```js
+  (context, args) => value
+  ```
 
 #### #write
 
-Writes an element (e.g., the result from Parser.parse) to `stream`, interpolating variables from the `context`:
+Writes an element (e.g., the result from Parser.parse) to `stream`, and uses the `context` when evaluating expressions:
 
 ```javascript
 renderer.write(elements, context, stream);
@@ -276,23 +296,31 @@ Because the component has responsibility for rendering `__children`, you can man
 </Switch>
 ```
 
-### Interpolator
+### Interpolation Functions
 
-An optional function which returns a value given the context and an accessor expression (the value contained between the braces in `#{...}`):
+Interpolation blocks can contain simple expressions including function calls:
 
-The default interpolator has behavior similar to lodash's get. It safely traverses object using a dot-separated accessor.
+```js
+<Component value={ not (foo(true)) and add(123, -123) or x.y } />
+```
 
-For example, given a context of `{ a: {b: 9 }}`, `{ a.b }` provides an interpolated value of `9`, and `{ x.y.z }` is `undefined`.
-
-```javascript
-function myInterpolator(context, accessor) {
-  return context[accessor];
-}
-
-toHTML({
-  interpolator: myInterpolator,
-  ...
+Interpolation functions are provided to the renderer constructor:
+```js
+new Renderer({
+  components: {
+    Component: (context, renderer) => {...}
+  },
+  functions: {
+    foo(context, myBool) { return myBool; },
+    add(context, a, b) { return a+b; }
+  }
 });
+```
+
+Given the above code, the `value` attribute of `Component` will be the value of x.y:
+
+```js
+value={ not (true) and 0 or x.y }
 ```
 
 ### Markdown Engine

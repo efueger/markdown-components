@@ -1,6 +1,6 @@
 import { isObject, isArray, isString } from 'lodash';
 import { isNumber } from 'util';
-import assert from 'assert';
+import { evaluate } from './evaluator';
 
 /**
  * Renderer
@@ -9,19 +9,18 @@ import assert from 'assert';
  * @param {Object} components - { componentName: function (renderer, tagName, attrs, children, stream)
  *                              => writes HTML to stream, ... }
  * @param {Function} defaultComponent - function (renderer, tagName, attrs, children, stream)
- * @param {Function} interpolator - optional interpolation function (variables, expr) => value (default is standardInterpolator)
+ * @param {{ [key: string]: (context, ...args) => }} functions - functions that may appear inside interpolation blocks
  *
  * components are functions of the form (renderer, tagName, attrs, children, stream) => {}
  * interpolator uses the expression inside {} to extract a value from variables
  */
 export default class Renderer {
-  constructor({ components, defaultComponent, interpolator }) {
+  constructor({ components, defaultComponent }) {
     this._components = {};
     for (var key in components) {
       this._components[key.toLowerCase()] = components[key];
     }
     this._defaultComponent = defaultComponent;
-    this._interpolator = interpolator || standardInterpolator;
   }
 
   componentFromElement(element) {
@@ -34,11 +33,12 @@ export default class Renderer {
 
   writeElement(elt, context, stream) {
     const _this = this;
-    const render = function (obj) {
+    const render = function (obj, newContext) {
+      newContext = newContext || context;
       if (isString(obj) || isNumber(obj)) {
         stream.write(obj);
       } else {
-        _this.write(obj, context, stream);
+        _this.write(obj, newContext, stream);
       }
     };
 
@@ -48,12 +48,12 @@ export default class Renderer {
     } else {
       // or a component:
       const component = this.componentFromElement(elt);
-      // inject __name and __children into props
-      const interpolatedAttributes = Object.assign(
+      // inject special vars into props
+      const interpolatedAttrs = Object.assign(
         { __name: elt.name, __children: elt.children },
-        interpolateAttributes(elt.attrs, context, _this._interpolator)
+        this.interpolateAttributes(elt.attrs, context)
       );
-      component(interpolatedAttributes, render);
+      component(interpolatedAttrs, render);
     }
   };
 
@@ -73,37 +73,30 @@ export default class Renderer {
 
   renderTextElement(textElement, context, render) {
     textElement.blocks.forEach(block => {
-      if (isString(block)) {
-        render(block);
+      if (isInterpolation(block)) {
+        render(evaluate(block.expression, context, this._functions));
       } else {
-        assert(block.type==='interpolation');
-        render(this._interpolator(context, block.accessor));
+        render(block);
       }
     });
   }
+
+  interpolateAttributes(attrs, context) {
+    var props = { ...context };
+    for (var key in attrs) {
+      var value = attrs[key];
+      if (isInterpolation(value)) {
+        props[key] = evaluate(value.expression, context, this._functions);
+      } else {
+        props[key] = value;
+      }
+    }
+    return props;
+  }
+
 }
 
-function standardInterpolator(variables, accessor) {
-  if (isArray(accessor)) {
-    if (accessor.length===0) {
-      return variables;
-    } else {
-      return standardInterpolator(variables[accessor[0]], accessor.slice(1));
-    }
-  } else {
-    return standardInterpolator(variables, accessor.split('.'));
-  }
+function isInterpolation(o) {
+  return isObject(o) && o.type === 'interpolation';
 }
 
-function interpolateAttributes(attrs, context, interpolator) {
-  var props = {};
-  for (var key in attrs) {
-    var value = attrs[key];
-    if (isObject(value)) {
-      props[key] = interpolator(context, value.accessor);
-    } else {
-      props[key] = value;
-    }
-  }
-  return props;
-}

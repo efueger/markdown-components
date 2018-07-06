@@ -1,6 +1,4 @@
 import { Parser, Renderer } from '../src';
-import { expect } from 'chai';
-import _ from 'lodash';
 import streams from 'memory-streams';
 import { markdownItEngine } from '../src/engines';
 
@@ -23,6 +21,43 @@ describe('Renderer', function () {
       };
     });
 
+    context('context variables', function () {
+      it('should be implicitly available to the component', function() {
+        const renderer = new Renderer({
+          components: {
+            ShowA({ A }, render) {
+              render(`A:${A}\n`);
+            }
+          }
+        });
+        const dom = parse('<ShowA/>');
+        const stream = new streams.WritableStream();
+        renderer.write(dom, { A: 1 }, stream);
+        const result  = stream.toString();
+        expect(result).toEqual(expect.stringContaining('A:1'));
+      });
+
+      it('may be changed during rendering', ()=>{
+        const renderer = new Renderer({
+          components: {
+            Square({ val, __children }, render) {
+              render(`${val}\n`);
+              render(__children, { val: val**2 });
+            }
+          }
+        });
+        const dom = parse('<Square><Square><Square></Square></Square></Square>');
+        const stream = new streams.WritableStream();
+        renderer.write(dom, { val: 2 }, stream);
+        const result  = stream.toString();
+        const lines = result.split('\n');
+        expect(lines[0]).toEqual('2');
+        expect(lines[1]).toEqual('4');
+        expect(lines[2]).toEqual('16');
+        expect(lines[3]).toEqual('');
+      });
+    });
+
     it('should render a float attribute', function () {
       const renderer = new Renderer({
         components: components
@@ -32,7 +67,7 @@ describe('Renderer', function () {
       renderer.write(dom, { a: { b: 'xyz' }}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('a=1.09:number');
+      expect(result).toEqual(expect.stringContaining('a=1.09:number'));
     });
 
     it('should render a string attribute', function () {
@@ -44,7 +79,7 @@ describe('Renderer', function () {
       renderer.write(dom, { a: { b: 'xyz' }}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('a=abc:string');
+      expect(result).toEqual(expect.stringContaining('a=abc:string'));
     });
 
     it('should render an interpolated attribute', function () {
@@ -56,7 +91,7 @@ describe('Renderer', function () {
       renderer.write(dom, { x: { y: 'xyz' }}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('a=xyz:string');
+      expect(result).toEqual(expect.stringContaining('a=xyz:string'));
     });
 
     it('should render an interpolated attribute, ignoring spaces', function () {
@@ -68,7 +103,7 @@ describe('Renderer', function () {
       renderer.write(dom, { x: { y: 'xyz' }}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('a=xyz:string');
+      expect(result).toEqual(expect.stringContaining('a=xyz:string'));
     });
 
     it('should render subcomponents', function () {
@@ -85,7 +120,7 @@ describe('Renderer', function () {
       renderer.write(dom, { x: { y: 'xyz' }}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('a=xyz:string');
+      expect(result).toEqual(expect.stringContaining('a=xyz:string'));
     });
 
     it('should render markdown inside a component', function () {
@@ -103,11 +138,11 @@ describe('Renderer', function () {
       renderer.write(dom, {}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('<div class="simple-component">');
-      expect(result).to.have.string('<h1>heading</h1>');
-      expect(result).to.have.string('<li>listItem1</li>');
-      expect(result).to.have.string('<li>listItem2</li>');
-      expect(result).to.have.string('</div>');
+      expect(result).toEqual(expect.stringContaining('<div class="simple-component">'));
+      expect(result).toEqual(expect.stringContaining('<h1>heading</h1>'));
+      expect(result).toEqual(expect.stringContaining('<li>listItem1</li>'));
+      expect(result).toEqual(expect.stringContaining('<li>listItem2</li>'));
+      expect(result).toEqual(expect.stringContaining('</div>'));
     });
 
     it('should interpolate curly brace expressions inside markdown', function () {
@@ -124,7 +159,7 @@ describe('Renderer', function () {
       const stream = new streams.WritableStream();
       renderer.write(dom, { user: { name: 'Bob' }}, stream);
       const result  = stream.toString();
-      expect(result).to.contain("<h1>Bob's Settings</h1>");
+      expect(result).toEqual(expect.stringContaining("<h1>Bob's Settings</h1>"));
     });
 
     it('should throw an error if an invalid object is provided', function () {
@@ -133,8 +168,8 @@ describe('Renderer', function () {
       });
       const stream = new streams.WritableStream();
       class X {};
-      expect(()=>renderer.write(1, {}, stream)).to.throw();
-      expect(()=>renderer.write(new X(), {}, stream)).to.throw();
+      expect(()=>renderer.write(1, {}, stream)).toThrow();
+      expect(()=>renderer.write(new X(), {}, stream)).toThrow();
     });
 
     it('should render a component with multiple variables', function () {
@@ -157,10 +192,10 @@ describe('Renderer', function () {
       renderer.write(dom, { a: { b: 'xyz' }}, stream);
       const result  = stream.toString();
 
-      expect(result).to.have.string('a=1:number');
-      expect(result).to.have.string('b=string:string');
-      expect(result).to.have.string('c=xyz:string');
-      expect(result).to.have.string('d=xyz:string');
+      expect(result).toEqual(expect.stringContaining('a=1:number'));
+      expect(result).toEqual(expect.stringContaining('b=string:string'));
+      expect(result).toEqual(expect.stringContaining('c=xyz:string'));
+      expect(result).toEqual(expect.stringContaining('d=xyz:string'));
     });
 
     context('when an unrecognized component is present', function () {
@@ -178,7 +213,7 @@ describe('Renderer', function () {
         renderer.write(dom, { val: 'myval' }, stream);
         const result = stream.toString();
 
-        expect(result).to.equal(
+        expect(result).toEqual(
           '<div class="default">'+
           'a=>123;b=>hello;c=>myval'+
           '</div>'
@@ -190,7 +225,7 @@ describe('Renderer', function () {
           components: components
         });
         const dom = parse('<default a=123 b="hello" c={val}></default>');
-        expect(()=>renderer.write(dom, { val: 'myval' })).to.throw();
+        expect(()=>renderer.write(dom, { val: 'myval' })).toThrow();
       });
     });
 
