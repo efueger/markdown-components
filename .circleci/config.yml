@@ -6,8 +6,8 @@ version: 2
 
 jobs:
   build:
-    # environment:
-      # CC_TEST_REPORTER_ID: a8fab361c54d385e2546963e7c0fec083fe1920b9e520ce86dd31f0971a11ffe
+    environment:
+      CC_TEST_REPORTER_ID: $CC_TEST_REPORTER_ID
 
     docker:
       # specify the version you desire here
